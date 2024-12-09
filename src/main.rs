@@ -198,7 +198,7 @@ impl Application for Calculator {
             .height(Length::Fill)
             .center_x()
             .center_y()
-            .style(ContainerStyle) // Pass the struct implementing StyleSheet
+            // .style(ContainerStyle) // Pass the struct implementing StyleSheet
             .into()
     }
 }
@@ -251,20 +251,19 @@ fn evaluate_expression(expr: &str) -> Option<f64> {
 
 // --- Styling ---
 
-struct ContainerStyle;
 
-impl iced::widget::container::StyleSheet for ContainerStyle {
-    type Style = iced::Theme;
+// impl iced::widget::container::StyleSheet for ContainerStyle {
+//     type Style = iced::Theme;
 
-    fn appearance(&self, theme: &Self::Style) -> iced::widget::container::Appearance {
-        iced::widget::container::Appearance {
-            background: Some(iced::Background::Color(theme.palette().background)),
-            text_color: Some(theme.palette().text),
-            border_radius: 10.0.into(),
-            ..Default::default()
-        }
-    }
-}
+//     fn appearance(&self, theme: &Self::Style) -> iced::widget::container::Appearance {
+//         iced::widget::container::Appearance {
+//             background: Some(iced::Background::Color(theme.palette().background)),
+//             text_color: Some(theme.palette().text),
+//             border_radius: 10.0.into(),
+//             ..Default::default()
+//         }
+//     }
+// }
 
 
 
