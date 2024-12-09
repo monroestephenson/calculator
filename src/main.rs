@@ -1,185 +1,318 @@
-use eframe::egui::{
-    self, Align, Color32, FontId, Layout, RichText, TextStyle, Rounding, Stroke, Vec2,
+use iced::{
+    alignment, executor, keyboard, theme,
+    widget::{button, column, container, row, text, text_input},
+    Alignment, Application, Color, Command, Element, Event, Length, Settings, Subscription,
 };
-use eframe::egui::Frame;
-use eframe::{App, NativeOptions};
 
-fn main() -> Result<(), eframe::Error> {
-    let options = NativeOptions {
-        // Updated field name from `initial_window_size` to `window_size`
-        // initial_window_size: Some(Vec2::new(400.0, 600.0)),
-        ..Default::default()
-    };
-    eframe::run_native(
-        "Rust GUI Calculator",
-        options,
-        Box::new(|_cc| Box::new(CalculatorApp::default())),
-    )
+fn main() -> iced::Result {
+    Calculator::run(Settings {
+        antialiasing: true,
+        ..Settings::default()
+    })
 }
 
-#[derive(Default)]
-struct CalculatorApp {
+struct Calculator {
     display: String,
-    operation: Option<char>,
-    operand: Option<f64>,
+    last_valid_expr: String,
+    buttons: Vec<Vec<char>>,
 }
 
-impl App for CalculatorApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Clone and modify the current style
-        let mut style = (*ctx.style()).clone();
+#[derive(Debug, Clone)]
+enum Message {
+    InputChanged(String),
+    ButtonPressed(char),
+    KeyPressed(keyboard::KeyCode),
+    Ignore,
+}
 
-        // Start with dark visuals
-        style.visuals = egui::Visuals::dark();
+impl Application for Calculator {
+    type Executor = executor::Default;
+    type Message = Message;
+    type Theme = theme::Theme;
+    type Flags = ();
 
-        // Update the text styles with larger, more readable fonts
-        style.text_styles = [
-            (TextStyle::Body, FontId::proportional(24.0)),
-            (TextStyle::Heading, FontId::proportional(32.0)),
-            (TextStyle::Button, FontId::proportional(24.0)),
-            (TextStyle::Monospace, FontId::monospace(20.0)),
-        ]
-        .iter()
-        .cloned()
-        .collect();
+    fn new(_flags: ()) -> (Self, Command<Message>) {
+        let buttons = vec![
+            vec!['7', '8', '9', '/'],
+            vec!['4', '5', '6', '*'],
+            vec!['1', '2', '3', '-'],
+            vec!['C', '0', '=', '+'],
+        ];
 
-        ctx.set_style(style);
+        (
+            Calculator {
+                display: String::new(),
+                last_valid_expr: String::new(),
+                buttons,
+            },
+            Command::none(),
+        )
+    }
 
-        egui::CentralPanel::default()
-            .frame(Frame::none())
-            .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(20.0);
-                    ui.heading(
-                        RichText::new("Rust GUI Calculator")
-                            .color(Color32::from_rgb(200, 200, 255)),
-                    );
-                });
+    fn title(&self) -> String {
+        String::from("Rust Iced Calculator")
+    }
 
-                // Display screen with customized frame
-                ui.add_space(20.0);
-                egui::Frame::none()
-                    .fill(Color32::from_rgb(50, 50, 50))
-                    .stroke(Stroke::new(1.0, Color32::from_rgb(70, 130, 180)))
-                    .rounding(Rounding::same(10.0))
-                    .show(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.display)
-                                .font(FontId::monospace(32.0))
-                                .desired_width(f32::INFINITY)
-                                .text_color(Color32::WHITE)
-                                .frame(false)
-                                .margin(Vec2::splat(10.0)),
-                        );
-                    });
+    fn theme(&self) -> theme::Theme {
+        // A dark theme
+        let theme = iced::Theme::custom(iced::theme::Palette {
+            background: iced::Color::from_rgb(0.1, 0.1, 0.1),
+            text: iced::Color::WHITE,
+            primary: iced::Color::from_rgb(0.2, 0.2, 0.3),
+            success: iced::Color::from_rgb(0.1, 0.6, 0.1),
+            danger: iced::Color::from_rgb(0.8, 0.1, 0.1),
+        });
+        theme
+    
+    }
 
-                ui.add_space(20.0);
-
-                // Calculator buttons with improved styling
-                let buttons = [
-                    ['7', '8', '9', '/'],
-                    ['4', '5', '6', '*'],
-                    ['1', '2', '3', '-'],
-                    ['C', '0', '=', '+'],
-                ];
-
-                for row in buttons.iter() {
-                    ui.horizontal(|ui| {
-                        for &ch in row.iter() {
-                            // Determine button color based on its function
-                            let button_color = match ch {
-                                'C' => Color32::from_rgb(220, 20, 60),   // Crimson
-                                '=' => Color32::from_rgb(34, 139, 34),  // Forest Green
-                                _ => Color32::from_rgb(70, 130, 180),  // Steel Blue
-                            };
-                            let text_color = Color32::WHITE;
-
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        RichText::new(ch.to_string())
-                                            .size(28.0)
-                                            .color(text_color),
-                                    )
-                                    .fill(button_color)
-                                    .min_size(Vec2::new(80.0, 60.0))
-                                    .rounding(Rounding::same(10.0)),
-                                )
-                                .clicked()
-                            {
-                                self.process_input(ch);
-                            }
-                        }
-                    });
-                    ui.add_space(10.0);
+    fn update(&mut self, message: Message) -> Command<Message> {
+        match message {
+            Message::InputChanged(new_value) => {
+                self.display = new_value.clone();
+                // Try to evaluate as user types
+                if let Some(result) = evaluate_expression(&new_value) {
+                    self.last_valid_expr = result.to_string();
                 }
+            }
+            Message::ButtonPressed(ch) => {
+                self.process_input(ch);
+            }
+            Message::KeyPressed(key) => {
+                // Handle keyboard events: numbers, operators, etc.
+                match key {
+                    keyboard::KeyCode::Key0 => self.process_input('0'),
+                    keyboard::KeyCode::Key1 => self.process_input('1'),
+                    keyboard::KeyCode::Key2 => self.process_input('2'),
+                    keyboard::KeyCode::Key3 => self.process_input('3'),
+                    keyboard::KeyCode::Key4 => self.process_input('4'),
+                    keyboard::KeyCode::Key5 => self.process_input('5'),
+                    keyboard::KeyCode::Key6 => self.process_input('6'),
+                    keyboard::KeyCode::Key7 => self.process_input('7'),
+                    keyboard::KeyCode::Key8 => self.process_input('8'),
+                    keyboard::KeyCode::Key9 => self.process_input('9'),
+                    keyboard::KeyCode::Plus => self.process_input('+'),
+                    keyboard::KeyCode::Minus => self.process_input('-'),
+                    keyboard::KeyCode::Asterisk => self.process_input('*'),
+                    keyboard::KeyCode::Slash => self.process_input('/'),
+                    keyboard::KeyCode::Delete | keyboard::KeyCode::Backspace => {
+                        self.display.pop();
+                        if let Some(result) = evaluate_expression(&self.display) {
+                            self.last_valid_expr = result.to_string();
+                        }
+                    }
+                    keyboard::KeyCode::Enter | keyboard::KeyCode::NumpadEnter => {
+                        // On Enter, finalize calculation
+                        if let Some(val) = evaluate_expression(&self.display) {
+                            self.display = val.to_string();
+                            self.last_valid_expr = self.display.clone();
+                        }
+                    }
+                    keyboard::KeyCode::Escape => {
+                        self.display.clear();
+                        self.last_valid_expr.clear();
+                    }
+                    keyboard::KeyCode::Period => {
+                        if !self.display.contains('.') {
+                            self.display.push('.');
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Message::Ignore => {}
+        }
 
-                // Add some footer or additional info if desired
-                ui.with_layout(Layout::bottom_up(Align::Center), |ui| {
-                    ui.add_space(20.0);
-                    ui.label(
-                        RichText::new("Made with ❤️ using Rust and eframe/egui")
-                            .color(Color32::LIGHT_GRAY),
-                    );
-                });
-            });
+        Command::none()
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        iced::subscription::events().map(|event| match event {
+            Event::Keyboard(keyboard::Event::KeyPressed { key_code, .. }) => {
+                Message::KeyPressed(key_code)
+            }
+            _ => Message::Ignore,
+        })
+    }
+
+    fn view(&self) -> Element<Message> {
+        // Create a styled container with a column layout
+        let title = text("Rust Iced Calculator")
+            .size(40)
+            .horizontal_alignment(alignment::Horizontal::Center);
+
+        let input = text_input("Type expression...", &self.display)
+            .on_input(Message::InputChanged)
+            .size(32)
+            .padding(10)
+            .width(Length::Fill);
+        
+
+        let mut rows = column![].spacing(10);
+
+        for row_buttons in &self.buttons {
+            let mut button_row = row![];
+            for &ch in row_buttons {
+                let (bg, txt_color) = match ch {
+                    'C' => (Color::from_rgb(0.8, 0.1, 0.1), Color::WHITE),
+                    '=' => (Color::from_rgb(0.1, 0.6, 0.1), Color::WHITE),
+                    '+' | '-' | '*' | '/' => (Color::from_rgb(0.2, 0.2, 0.5), Color::WHITE),
+                    _ => (Color::from_rgb(0.2, 0.2, 0.3), Color::WHITE),
+                };
+
+                let btn = button(
+                    text(ch.to_string())
+                        .size(28)
+                        .horizontal_alignment(alignment::Horizontal::Center),
+                )
+                .width(Length::Fixed(80.0))
+                .height(Length::Fixed(60.0))                
+                .on_press(Message::ButtonPressed(ch))
+                .style(theme::Button::Custom(Box::new(ButtonStyle { bg, txt_color })));
+
+                button_row = button_row.push(btn);
+            }
+            rows = rows.push(button_row.spacing(10));
+        }
+
+        // Footer
+        let footer = text("Made with ❤️ using Rust and Iced")
+            .size(16)
+            .horizontal_alignment(alignment::Horizontal::Center)
+            .style(theme::Text::Color(iced::Color::from_rgb(0.7, 0.7, 0.7)));
+
+
+
+        let content = column![
+            title,
+            input,
+            rows,
+            footer
+        ]
+        .align_items(Alignment::Center)
+        .padding(20)
+        .spacing(20);
+
+        container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x()
+            .center_y()
+            .style(ContainerStyle) // Pass the struct implementing StyleSheet
+            .into()
     }
 }
 
-impl CalculatorApp {
-    fn process_input(&mut self, input: char) {
-        match input {
+impl Calculator {
+    fn process_input(&mut self, ch: char) {
+        match ch {
             '0'..='9' => {
-                self.display.push(input);
+                self.display.push(ch);
+                if let Some(result) = evaluate_expression(&self.display) {
+                    self.last_valid_expr = result.to_string();
+                }
             }
             '.' => {
                 if !self.display.contains('.') {
-                    self.display.push(input);
+                    self.display.push(ch);
                 }
             }
             '+' | '-' | '*' | '/' => {
-                if let Some(last_char) = self.display.chars().last() {
+                // Ensure expression is valid before adding operator
+                if !self.display.is_empty() {
+                    let last_char = self.display.chars().last().unwrap();
                     if "+-*/".contains(last_char) {
-                        self.display.pop(); // Replace the operator
+                        // Replace the operator
+                        self.display.pop();
                     }
-                }
-                if let Ok(num) = self.display.parse::<f64>() {
-                    self.operand = Some(num);
-                    self.operation = Some(input);
-                    self.display.clear();
+                    self.display.push(ch);
                 }
             }
             '=' => {
-                if let (Some(op), Some(operand)) = (self.operation, self.operand) {
-                    if let Ok(second_operand) = self.display.parse::<f64>() {
-                        let result = match op {
-                            '+' => operand + second_operand,
-                            '-' => operand - second_operand,
-                            '*' => operand * second_operand,
-                            '/' => {
-                                if second_operand != 0.0 {
-                                    operand / second_operand
-                                } else {
-                                    self.display = "Error".to_string();
-                                    self.operand = None;
-                                    self.operation = None;
-                                    return;
-                                }
-                            }
-                            _ => return,
-                        };
-                        self.display = result.to_string();
-                        self.operand = None;
-                        self.operation = None;
-                    }
+                // Evaluate the expression
+                if let Some(val) = evaluate_expression(&self.display) {
+                    self.display = val.to_string();
+                    self.last_valid_expr = self.display.clone();
                 }
             }
             'C' => {
                 self.display.clear();
-                self.operation = None;
-                self.operand = None;
+                self.last_valid_expr.clear();
             }
             _ => {}
         }
     }
 }
+
+fn evaluate_expression(expr: &str) -> Option<f64> {
+    meval::eval_str(expr).ok()
+}
+
+
+// --- Styling ---
+
+struct ContainerStyle;
+
+impl iced::widget::container::StyleSheet for ContainerStyle {
+    type Style = iced::Theme;
+
+    fn appearance(&self, theme: &Self::Style) -> iced::widget::container::Appearance {
+        iced::widget::container::Appearance {
+            background: Some(iced::Background::Color(theme.palette().background)),
+            text_color: Some(theme.palette().text),
+            border_radius: 10.0.into(),
+            ..Default::default()
+        }
+    }
+}
+
+
+
+
+
+struct ButtonStyle {
+    bg: Color,
+    txt_color: Color,
+}
+
+impl iced::widget::button::StyleSheet for ButtonStyle {
+    type Style = iced::Theme;
+
+    fn active(&self, _style: &Self::Style) -> iced::widget::button::Appearance {
+        iced::widget::button::Appearance {
+            background: Some(iced::Background::Color(self.bg)),
+            border_radius: 10.0.into(),
+            text_color: self.txt_color,
+            ..Default::default()
+        }
+    }
+
+    fn hovered(&self, _style: &Self::Style) -> iced::widget::button::Appearance {
+        iced::widget::button::Appearance {
+            background: Some(iced::Background::Color(iced::Color {
+                r: (self.bg.r + 0.1).min(1.0),
+                g: (self.bg.g + 0.1).min(1.0),
+                b: (self.bg.b + 0.1).min(1.0),
+                a: self.bg.a,
+            })),
+            border_radius: 10.0.into(),
+            text_color: self.txt_color,
+            ..Default::default()
+        }
+    }
+
+    fn pressed(&self, _style: &Self::Style) -> iced::widget::button::Appearance {
+        iced::widget::button::Appearance {
+            background: Some(iced::Background::Color(iced::Color {
+                r: (self.bg.r - 0.1).max(0.0),
+                g: (self.bg.g - 0.1).max(0.0),
+                b: (self.bg.b - 0.1).max(0.0),
+                a: self.bg.a,
+            })),
+            border_radius: 10.0.into(),
+            text_color: self.txt_color,
+            ..Default::default()
+        }
+    }
+}
+

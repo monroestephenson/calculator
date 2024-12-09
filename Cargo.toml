@@ -1,7 +1,9 @@
 [package]
-name = "calculator"
+name = "iced_calculator"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-eframe = "0.26"
+iced = "0.9"
+iced_style = "0.9"
+meval = "0.2"
